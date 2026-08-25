@@ -1,0 +1,35 @@
+# Build folders
+Debug/
+Release/
+
+# Object files
+*.o
+*.obj
+
+# Dependency files
+*.d
+
+# Executables
+*.elf
+*.axf
+*.out
+*.bin
+*.hex
+*.map
+
+# STM32CubeIDE
+.settings/
+.metadata/
+.project
+.cproject
+
+# User settings
+*.launch
+
+# Backup files
+*~
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
