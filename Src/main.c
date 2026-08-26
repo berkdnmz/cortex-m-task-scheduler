@@ -36,20 +36,26 @@ void enable_processor_faults(void);
 uint32_t get_psp_value(void);
 __attribute__ ((naked)) void switch_sp_to_psp(void);
 
-uint32_t psp_of_tasks[MAX_TASKS] = {T1_STACK_START, T2_STACK_START, T3_STACK_START, T4_STACK_START};
-uint32_t task_handlers[MAX_TASKS];
-uint8_t current_task = 0; //task1 is running
+void task_delay(uint32_t tick_count);
+
+uint8_t current_task = 1; //task1 is running
+uint32_t g_tick_count = 0;
+
+typedef struct
+{
+	uint32_t psp_value;
+	uint32_t block_count;
+	uint8_t  current_state;
+	void     (*task_handler)(void);
+}TCB_t;
+
+TCB_t user_task[MAX_TASKS];
 
 int main(void)
 {
 	enable_processor_faults();
 
 	init_scheduler_stack(SCHED_STACK_START);
-
-	task_handlers[0] = (uint32_t)task1_handler;
-	task_handlers[1] = (uint32_t)task2_handler;
-	task_handlers[2] = (uint32_t)task3_handler;
-	task_handlers[3] = (uint32_t)task4_handler;
 
 	init_task_stack();
 
@@ -63,11 +69,17 @@ int main(void)
 	for(;;);
 }
 
+void idle_task(void)
+{
+	while(1);
+}
+
 void task1_handler(void)
 {
 	while(1)
 	{
-		printf("This is task1\n");
+		printf("task1\n");
+		task_delay(125);
 	}
 }
 
@@ -75,7 +87,8 @@ void task2_handler(void)
 {
 	while(1)
 	{
-		printf("This is task2\n");
+		printf("task2\n");
+		task_delay(1000);
 	}
 }
 
@@ -83,7 +96,8 @@ void task3_handler(void)
 {
 	while(1)
 	{
-		printf("This is task3\n");
+		printf("task3\n");
+		task_delay(500);
 	}
 }
 
@@ -91,7 +105,8 @@ void task4_handler(void)
 {
 	while(1)
 	{
-		printf("This is task4\n");
+		printf("task4\n");
+		task_delay(2000);
 	}
 }
 
@@ -123,17 +138,47 @@ __attribute__ ((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack)
 
 void init_task_stack(void)
 {
+	for (int i = 0; i < MAX_TASKS; i++)
+	{
+		user_task[i].current_state = TASK_READY_STATE;
+        if (i == 0)
+        {
+        	user_task[i].psp_value = IDLE_STACK_START;
+        	user_task[i].task_handler = idle_task;
+        }
+        else if (i == 1)
+        {
+        	user_task[i].psp_value = T1_STACK_START;
+        	user_task[i].task_handler = task1_handler;
+        }
+        else if (i == 2)
+        {
+        	user_task[i].psp_value = T2_STACK_START;
+        	user_task[i].task_handler = task2_handler;
+        }
+        else if (i == 3)
+        {
+        	user_task[i].psp_value = T3_STACK_START;
+        	user_task[i].task_handler = task3_handler;
+        }
+        else
+		{
+			user_task[i].psp_value = T4_STACK_START;
+			user_task[i].task_handler = task4_handler;
+		}
+	}
+
 	uint32_t *pPSP;
 
 	for(int i = 0; i < MAX_TASKS; i++)
 	{
-		pPSP = (uint32_t*)psp_of_tasks[i];
+		pPSP = (uint32_t*)user_task[i].psp_value;
 
 		pPSP--;
 		*pPSP = DUMMY_XPSR; //0X01000000
 
 		pPSP--; //PC
-		*pPSP = task_handlers[i];
+		*pPSP = (uint32_t) user_task[i].task_handler;
 
 		pPSP--; //LR
 		*pPSP = 0xFFFFFFFD;
@@ -144,7 +189,7 @@ void init_task_stack(void)
 			*pPSP = 0;
 		}
 
-		psp_of_tasks[i] = (uint32_t)pPSP;
+		user_task[i].psp_value = (uint32_t)pPSP;
 	}
 }
 
@@ -159,18 +204,33 @@ void enable_processor_faults(void)
 
 uint32_t get_psp_value(void)
 {
-	return psp_of_tasks[current_task];
+	return user_task[current_task].psp_value;
 }
 
 void save_psp_value(uint32_t current_psp_value)
 {
-	psp_of_tasks[current_task] = current_psp_value;
+	user_task[current_task].psp_value = current_psp_value;
 }
 
 void update_next_task(void)
 {
-	current_task++;
-	current_task %= MAX_TASKS;
+	int state = TASK_BLOCKED_STATE;
+
+	for(int i = 0; i < MAX_TASKS; i++)
+	{
+		current_task++;
+		current_task %= MAX_TASKS;
+		state = user_task[current_task].current_state;
+		if((state == TASK_READY_STATE) && (current_task != 0))
+		{
+			break;
+		}
+	}
+
+	if(state != TASK_READY_STATE)
+	{
+		current_task = 0;
+	}
 }
 
 __attribute__ ((naked)) void switch_sp_to_psp(void)
@@ -189,7 +249,30 @@ __attribute__ ((naked)) void switch_sp_to_psp(void)
 	__asm volatile ("BX LR");
 }
 
-__attribute__ ((naked)) void SysTick_Handler(void)
+void schedule(void)
+{
+	uint32_t *pICSR = (uint32_t*)0xE000ED04;
+	//pend the pendsv exception
+	*pICSR |= ( 1 << 28);
+}
+
+void task_delay(uint32_t tick_count)
+{
+	//disable interrupt
+	INTERRUPT_DISABLE();
+
+	if(current_task)
+	{
+		user_task[current_task].block_count = g_tick_count + tick_count;
+		user_task[current_task].current_state = TASK_BLOCKED_STATE;
+		schedule();
+	}
+
+	//enable interrupt
+	INTERRUPT_ENABLE();
+}
+
+__attribute__ ((naked)) void PendSV_Handler(void)
 {
 	/*
 	 * Save the context of current task
@@ -223,6 +306,35 @@ __attribute__ ((naked)) void SysTick_Handler(void)
 	__asm volatile("POP {LR}");
 
 	__asm volatile("BX LR");
+}
+
+void update_global_tick_count(void)
+{
+	g_tick_count++;
+}
+
+void unblock_task(void)
+{
+	for(int i = 1; i < MAX_TASKS; i++)
+	{
+		if(user_task[i].current_state != TASK_READY_STATE)
+		{
+			if(user_task[i].block_count == g_tick_count)
+			{
+				user_task[i].current_state = TASK_READY_STATE;
+			}
+		}
+	}
+}
+
+void SysTick_Handler(void)
+{
+	uint32_t *pICSR = (uint32_t*)0xE000ED04;
+
+	update_global_tick_count();
+	unblock_task();
+	//pend the pendsv exception
+	*pICSR |= ( 1 << 28);
 }
 
 void HardFault_Handler(void)
