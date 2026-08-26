@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "main.h"
+#include "bsp_uart.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -54,6 +55,8 @@ TCB_t user_task[MAX_TASKS];
 int main(void)
 {
 	enable_processor_faults();
+
+	BSP_UART2_Init();
 
 	init_scheduler_stack(SCHED_STACK_START);
 
