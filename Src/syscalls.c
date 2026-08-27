@@ -80,7 +80,7 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
 
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
-    BSP_UART2_Write((uint8_t*)ptr, len);
+    BSP_UART3_Write((uint8_t*)ptr, len);
     return len;
 }
 

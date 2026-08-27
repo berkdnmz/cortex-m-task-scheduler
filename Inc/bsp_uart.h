@@ -10,7 +10,7 @@
 
 #include "stm32f446xx.h"
 
-void BSP_UART2_Init(void);
-void BSP_UART2_Write(uint8_t *pBuffer, uint32_t len);
+void BSP_UART3_Init(void);
+void BSP_UART3_Write(uint8_t *pBuffer, uint32_t len);
 
 #endif /* BSP_UART_H_ */

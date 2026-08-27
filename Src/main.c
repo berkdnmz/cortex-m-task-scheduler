@@ -56,7 +56,7 @@ int main(void)
 {
 	enable_processor_faults();
 
-	BSP_UART2_Init();
+	BSP_UART3_Init();
 
 	init_scheduler_stack(SCHED_STACK_START);
 
